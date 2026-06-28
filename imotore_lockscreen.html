@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>イメトレ待ち受け</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{
+  width:100%;height:100%;
+  background:#000;
+  font-family:'Noto Sans JP','Hiragino Sans',sans-serif;
+  overflow:hidden;
+  -webkit-text-size-adjust:none;
+}
+#bg{
+  position:fixed;inset:0;
+  background:linear-gradient(180deg,#080010 0%,#050010 40%,#000008 100%);
+}
+#stars{position:fixed;inset:0;pointer-events:none}
+
+/* ステータスバー */
+#statusbar{
+  position:fixed;top:0;left:0;right:0;
+  height:44px;
+  display:flex;justify-content:space-between;align-items:center;
+  padding:12px 20px 0;
+  color:#fff;
+  font-size:13px;font-weight:600;
+  z-index:100;
+  background:linear-gradient(180deg,rgba(0,0,0,0.4) 0%,transparent 100%);
+}
+.sb-right{display:flex;gap:5px;align-items:center}
+.signal{display:flex;gap:2px;align-items:flex-end}
+.signal span{background:#fff;width:3px;border-radius:1px}
+.battery{display:flex;align-items:center;gap:3px;font-size:11px}
+.bat-icon{width:22px;height:12px;border:1px solid rgba(255,255,255,0.6);border-radius:2px;position:relative;padding:2px}
+.bat-icon::after{content:'';position:absolute;right:-4px;top:3px;width:2px;height:6px;background:rgba(255,255,255,0.6);border-radius:0 1px 1px 0}
+.bat-fill{height:100%;background:#fff;border-radius:1px;width:85%}
+
+/* 上半分：時計エリア */
+#clock-area{
+  position:fixed;top:0;left:0;right:0;
+  height:48%;
+  display:flex;flex-direction:column;
+  justify-content:center;align-items:center;
+  padding-top:44px;
+}
+#clock{
+  font-size:80px;font-weight:200;
+  color:#fff;
+  letter-spacing:-4px;
+  line-height:1;
+  font-variant-numeric:tabular-nums;
+}
+#date{
+  font-size:15px;font-weight:400;
+  color:rgba(255,255,255,0.55);
+  margin-top:8px;
+  letter-spacing:0.05em;
+}
+#weekday-badge{
+  margin-top:12px;
+  font-size:11px;
+  color:rgba(255,255,255,0.3);
+  letter-spacing:0.15em;
+}
+
+/* 下半分：通知エリア */
+#notif-area{
+  position:fixed;bottom:0;left:0;right:0;
+  height:52%;
+  display:flex;flex-direction:column;
+  justify-content:flex-end;
+  padding:0 14px 34px;
+  overflow:hidden;
+}
+#notif-stack{
+  display:flex;flex-direction:column;
+  gap:8px;
+  justify-content:flex-end;
+}
+
+/* 通知カード */
+.notif-card{
+  background:rgba(28,28,36,0.82);
+  backdrop-filter:blur(24px);
+  -webkit-backdrop-filter:blur(24px);
+  border-radius:16px;
+  border:0.5px solid rgba(255,255,255,0.1);
+  padding:11px 13px;
+  animation:slideIn 0.4s cubic-bezier(0.34,1.1,0.64,1) both;
+  position:relative;
+  overflow:hidden;
+}
+.notif-card::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,rgba(255,255,255,0.03) 0%,transparent 50%);
+  pointer-events:none;
+}
+@keyframes slideIn{
+  from{opacity:0;transform:translateY(-16px) scale(0.96)}
+  to{opacity:1;transform:translateY(0) scale(1)}
+}
+.notif-exit{
+  transition:opacity 0.35s,transform 0.35s;
+  opacity:0;transform:scale(0.95) translateY(-10px);
+}
+.notif-header{
+  display:flex;align-items:center;gap:7px;
+  margin-bottom:5px;
+}
+.app-icon{
+  width:20px;height:20px;border-radius:6px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;color:#fff;
+  flex-shrink:0;
+}
+.app-name{font-size:11px;color:rgba(255,255,255,0.42);flex:1;letter-spacing:0.04em}
+.notif-time{font-size:10px;color:rgba(255,255,255,0.28)}
+.notif-sender{font-size:13px;font-weight:600;color:#fff;margin-bottom:3px;line-height:1.3}
+.notif-body{font-size:12.5px;color:rgba(255,255,255,0.78);line-height:1.5;word-break:break-all}
+.notif-footer{display:flex;align-items:center;gap:8px;margin-top:6px}
+.read-badge{font-size:10px;color:#4fc3f7;letter-spacing:0.05em}
+.unread-dot{width:7px;height:7px;border-radius:50%;background:#4fc3f7;margin-left:auto}
+.voice-msg{font-size:10px;color:rgba(255,255,255,0.38);display:flex;align-items:center;gap:4px}
+
+/* ホームインジケーター */
+#home-ind{
+  position:fixed;bottom:8px;left:50%;transform:translateX(-50%);
+  width:130px;height:5px;
+  background:rgba(255,255,255,0.25);border-radius:3px;
+}
+</style>
+</head>
+<body>
+<div id="bg"></div>
+<canvas id="stars"></canvas>
+
+<div id="statusbar">
+  <span id="sb-clock">9:41</span>
+  <div class="sb-right">
+    <div class="signal">
+      <span style="height:4px"></span>
+      <span style="height:7px"></span>
+      <span style="height:10px"></span>
+      <span style="height:13px"></span>
+    </div>
+    <div class="battery">
+      <div class="bat-icon"><div class="bat-fill"></div></div>
+      <span style="font-size:11px">98%</span>
+    </div>
+  </div>
+</div>
+
+<div id="clock-area">
+  <div id="clock">00:00</div>
+  <div id="date">2024年1月1日</div>
+  <div id="weekday-badge">ロック中</div>
+</div>
+
+<div id="notif-area">
+  <div id="notif-stack"></div>
+</div>
+
+<div id="home-ind"></div>
+
+<script>
+// ========== 100通のメッセージ ==========
+const messages = [
+  // LINE ビジネス系
+  {app:'line',icon:'L',color:'#06c755',from:'田中美咲',body:'先生、本当にありがとうございます🌸 セッションを受けてから夫との会話が全然変わりました',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'山本愛子',body:'売上が先月比2倍になりました！引き寄せが本物だとわかりました😭 紹介させてください',meta:{dot:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'松本奈々',body:'使命に気づきました。毎日が変わっています💫',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'加藤真理子',body:'潜在意識のブロックが外れた感じがします。毎朝が違います',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'小林麻衣',body:'旦那が初めて「ありがとう」って言ってくれました🥺 夫婦関係が改善されています',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'渡辺恵',body:'昨夜久しぶりに安心して眠れました😢 本当に感謝しています',meta:{voice:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'伊藤さくら',body:'旦那と2人で泣きました。こんな変化が起きるなんて思ってもいませんでした',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'中島ゆい',body:'先生、紹介したいお友達がいます。私と同じで引き寄せで傷ついた方なんですが😢',meta:{dot:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'佐藤れな',body:'人生が変わりました。本当にありがとうございます🌸',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'高橋みほ',body:'安心感が違います。先生に出会えてよかったです🤍',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'吉田あかり',body:'彼との関係がこんなに変わるなんて思っていませんでした😊',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'森川なつ',body:'収入が3倍になりました。先生のおかげです🌟',meta:{dot:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'西村ひかり',body:'毎朝このメッセージを思い出しています。本当にありがとうございました☀️',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'木村さやか',body:'ずっと悩んでいたことが軽くなりました。先生に感謝しかありません',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'石川ゆか',body:'旦那が変わった、というより私が変わったんだと気づきました💕',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'林あやの',body:'セッション後から毎日泣いています。嬉し泣きです😭',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'清水なみ',body:'先月比で新規が4倍に増えました。何が変わったんだろうと思ったら全部内側でした',meta:{dot:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'山田えり',body:'大好きな仕事だけで食べていけるようになりました🌺',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'中村あい',body:'昨日、憧れのあの方からDMが来ました。夢みたいです✨',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'小川ちさと',body:'友達に先生を紹介したらすごく喜ばれました。ありがとうございます',meta:{read:true}},
+  // LINE 恋愛・夫婦系
+  {app:'line',icon:'L',color:'#06c755',from:'坂本りか',body:'プロポーズされました😭 先生ありがとうございます！！！💍',meta:{dot:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'藤田まこ',body:'彼が「一緒にいると安心する」って言ってくれました🥹',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'岡本はな',body:'夫婦でセッション受けたいと言っています。二人で変わりたいって',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'長谷川みか',body:'片思いの人から連絡来ました！！先生のおかげです本当に🌸',meta:{dot:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'橋本ゆり',body:'結婚が決まりました。先生に報告したくて😊💍',meta:{read:true}},
+  // Instagram DM
+  {app:'ig',icon:'▶',color:'#e1306c',from:'@yuki_healing',body:'ストーリーズをシェアしていいですか？すごく刺さりました✨',meta:{dot:true}},
+  {app:'ig',icon:'▶',color:'#e1306c',from:'@momoko_life',body:'はじめまして。ずっとフォローしていました。セッションの申し込み方法を教えてください',meta:{dot:true}},
+  {app:'ig',icon:'▶',color:'#e1306c',from:'@sato_counselor',body:'コラボライブのご提案をいただきました。フォロワー3万人アカウントとぜひ',meta:{dot:true}},
+  {app:'ig',icon:'▶',color:'#e1306c',from:'@hana_psychology',body:'この投稿シェアしていいですか？「引き寄せ難民」という言葉、まさに私でした',meta:{dot:true}},
+  {app:'ig',icon:'▶',color:'#e1306c',from:'@rika_wellness',body:'リールを見て泣きました。保存してもう10回見ています',meta:{dot:true}},
+  {app:'ig',icon:'▶',color:'#e1306c',from:'@nana_healing',body:'先生のアカウント見てから毎朝の気持ちが変わりました✨フォロワーに紹介していいですか',meta:{dot:true}},
+  {app:'ig',icon:'▶',color:'#e1306c',from:'@kei_mindset',body:'はじめまして。友人から紹介されました。体験セッション受けたいです',meta:{dot:true}},
+  {app:'ig',icon:'▶',color:'#e1306c',from:'@mai_self_love',body:'このリール、友達10人にシェアしました。みんな刺さってます',meta:{dot:true}},
+  {app:'ig',icon:'▶',color:'#e1306c',from:'@akari_quantum',body:'量子波動の話、初めてここまで腑に落ちました。もっと学びたいです',meta:{dot:true}},
+  {app:'ig',icon:'▶',color:'#e1306c',from:'@light_hana29',body:'フォロワー増えてますね！先生の投稿大好きです🌸 いつも勉強になります',meta:{}},
+  // Stripe・決済
+  {app:'stripe',icon:'S',color:'#6772e5',from:'Stripe',body:'入金確認 ¥98,000 — プレミアムセッション × 3件、コンサル × 2件',meta:{dot:true}},
+  {app:'stripe',icon:'S',color:'#6772e5',from:'Stripe',body:'今月の売上 ¥847,200 — 過去最高を更新しました 📈',meta:{dot:true}},
+  {app:'stripe',icon:'S',color:'#6772e5',from:'Stripe',body:'新規決済 ¥45,000 — CODE-Xセッション 90分（木村様）',meta:{dot:true}},
+  {app:'stripe',icon:'S',color:'#6772e5',from:'Stripe',body:'定期購読 更新 × 12件 ¥180,000 / Princess Lounge月額',meta:{dot:true}},
+  {app:'stripe',icon:'S',color:'#6772e5',from:'Stripe',body:'入金 ¥220,000 — グループセミナー満席分',meta:{dot:true}},
+  {app:'stripe',icon:'S',color:'#6772e5',from:'Stripe',body:'新規決済 ¥68,000 — 3ヶ月サポートプログラム（佐々木様）',meta:{dot:true}},
+  {app:'stripe',icon:'S',color:'#6772e5',from:'Stripe',body:'今日の売上 ¥156,000 達成 🎉',meta:{dot:true}},
+  {app:'stripe',icon:'S',color:'#6772e5',from:'Stripe',body:'入金 ¥45,000 — 体験セッション + 継続申込（田村様）',meta:{dot:true}},
+  {app:'stripe',icon:'S',color:'#6772e5',from:'Stripe',body:'今月累計 ¥1,240,000 を突破しました 🌟',meta:{dot:true}},
+  // メール
+  {app:'mail',icon:'✉',color:'#4a90e2',from:'鈴木花奈',body:'件名: ご紹介のお礼 / 友人3名をご紹介しました。皆さん申し込み希望とのことです🙏',meta:{}},
+  {app:'mail',icon:'✉',color:'#4a90e2',from:'note.com',body:'記事「引き寄せ難民が本当に変わる理由」が1,200いいねを達成しました ⭐',meta:{}},
+  {app:'mail',icon:'✉',color:'#4a90e2',from:'田村めぐみ',body:'件名: セッションのお礼 / あの日からまったく別の人生を歩んでいます。本当にありがとうございました',meta:{}},
+  {app:'mail',icon:'✉',color:'#4a90e2',from:'出版社 編集部',body:'件名: 書籍出版のご提案 / 先生のコンテンツに可能性を感じています。一度お話しできますか',meta:{dot:true}},
+  {app:'mail',icon:'✉',color:'#4a90e2',from:'メディア担当',body:'件名: 取材依頼 / 「引き寄せ難民」の概念について、ぜひ記事でご紹介させてください',meta:{dot:true}},
+  {app:'mail',icon:'✉',color:'#4a90e2',from:'セミナー事務局',body:'件名: 登壇のご依頼 / 次回イベントのゲストスピーカーとしてお願いしたいのですが',meta:{dot:true}},
+  {app:'mail',icon:'✉',color:'#4a90e2',from:'杉山ゆか',body:'件名: 感謝のメール / 3年間悩んでいたことが1回のセッションで変わりました',meta:{}},
+  // カレンダー
+  {app:'cal',icon:'📅',color:'#ff6b35',from:'今日の予定',body:'14:00 個人セッション（伊藤様）/ 16:00 グループセミナー 8名参加確定',meta:{}},
+  {app:'cal',icon:'📅',color:'#ff6b35',from:'明日の予定',body:'10:00 体験セッション 新規3名 / 撮影 Reels用コンテンツ',meta:{}},
+  {app:'cal',icon:'📅',color:'#ff6b35',from:'今週の予定',body:'セッション 15件 満席 🎉 キャンセル待ち 7名',meta:{}},
+  // グループ・コミュニティ
+  {app:'line',icon:'L',color:'#06c755',from:'グループ: Princess Lounge',body:'新メンバー 佐藤さん、中村さん、高橋さんが参加しました。現在68名 🎉',meta:{dot:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'グループ: Princess Lounge',body:'【今月の奇跡報告】売上最高更新、プロポーズ、彼氏できた！報告ラッシュです✨',meta:{dot:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'グループ: 真理学受講生',body:'松本さんが「彼と同棲することになりました！」と報告してくれました🎊',meta:{dot:true}},
+  // さらにLINE個人
+  {app:'line',icon:'L',color:'#06c755',from:'竹内みな',body:'先生のセッション受けてから、お金への恐怖がなくなりました。不思議です',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'福田あさ',body:'娘が「ママ最近楽しそう」って言ってくれました。子育てにも影響が出てきました🌸',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'宮本かな',body:'仕事をやめて独立しようと思います。先生のセッションがきっかけでした',meta:{dot:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'上田りさ',body:'ドーパミン疲弊という言葉、まさに私でした。楽になりました',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'近藤めい',body:'RASの話を聞いてから、毎日いいことしか目に入らなくなりました✨',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'原田さき',body:'ホメオスタシスを意識するようになってから行動が変わりました。ありがとうございます',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'久保えみ',body:'体が軽くなりました。何年ぶりかわからないくらい',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'三浦のの',body:'先生、紹介者が紹介者を呼んで、気づいたら8人ご紹介していました😊',meta:{dot:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'平野あい',body:'毎朝この通知見てイメトレしています。ありがとうございます',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'柴田りの',body:'セッションを受けてから「私でもいいんだ」という感覚になりました',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'金子まり',body:'引き寄せ難民だった私が、今では人に教える立場になりました🌺',meta:{dot:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'星野ちか',body:'量子波動セッション、本当に体感がありました。また受けたいです',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'村上みき',body:'初めてのセッションで泣いてしまいました。ずっと頑張ってきたんだなと',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'浜田ゆい',body:'先生に出会う前の自分に教えてあげたいです',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'池田なな',body:'潜在意識って本当にあるんですね。体で感じました',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'野口さな',body:'夢だと思っていた収入が現実になりました。ありがとうございます🌟',meta:{dot:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'谷口はる',body:'毎月先生のセッションを受けることにしました。もう手放せないです',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'大野ゆか',body:'友人に先生を紹介したら「人生変わった」と泣いて連絡が来ました😭',meta:{dot:true}},
+  // さらにInstagram
+  {app:'ig',icon:'▶',color:'#e1306c',from:'@luna_mind',body:'リールがバズっています！シェア数すごいです✨',meta:{dot:true}},
+  {app:'ig',icon:'▶',color:'#e1306c',from:'@cocoro_life',body:'先生のコンテンツで初めて「私にもできる」と思えました',meta:{dot:true}},
+  {app:'ig',icon:'▶',color:'#e1306c',from:'@mind_journey_jp',body:'コラボしたいです！フォロワー5万人います。ぜひご連絡ください',meta:{dot:true}},
+  // さらにStripe
+  {app:'stripe',icon:'S',color:'#6772e5',from:'Stripe',body:'新規決済 ¥198,000 — 年間サポートプログラム（高橋様）',meta:{dot:true}},
+  {app:'stripe',icon:'S',color:'#6772e5',from:'Stripe',body:'入金 ¥88,000 — グループセッション + 個別フォロー（田中様）',meta:{dot:true}},
+  // メール続き
+  {app:'mail',icon:'✉',color:'#4a90e2',from:'和田ちさ',body:'件名: 受講後の変化 / 先月から毎月10万円以上収入が増えています',meta:{}},
+  {app:'mail',icon:'✉',color:'#4a90e2',from:'番組制作 担当',body:'件名: テレビ出演のご依頼 / 潜在意識と引き寄せについてお話しいただけますか',meta:{dot:true}},
+  // LINE 続き
+  {app:'line',icon:'L',color:'#06c755',from:'山口のぞみ',body:'体験セッション後すぐに継続を決めました。こんなに変わるなら早く受ければよかった',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'松田あゆ',body:'先生のことずっと信じてよかったです。ありがとうございます💕',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'川口まな',body:'夫が「最近変わったね、綺麗になった」と言ってくれました🥹',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'新井ゆり',body:'独立して初月から黒字になりました。ありえないです😭',meta:{dot:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'菊地さら',body:'心が軽いまま仕事できるって、こんなに気持ちいいんですね',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'大塚みな',body:'お客様から「あなたと話すと元気になる」と言われるようになりました🌸',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'横山いく',body:'セッション後に臨時収入が2回来ました。偶然じゃない気がします✨',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'安田りか',body:'ずっと怖かった母親との関係が変わり始めました。信じられないです',meta:{read:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'井上あか',body:'先生のセッション、友達の誕生日プレゼントにしました🎁 喜ばれました',meta:{dot:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'斎藤るな',body:'初めての高額セッションを申し込みました。自分への投資だと思って😊',meta:{dot:true}},
+  {app:'line',icon:'L',color:'#06c755',from:'前田こと',body:'ありがとうの言葉が足りないくらいです。本当にありがとうございます🌸🌸',meta:{read:true}},
+];
+
+// ========== 時計 ==========
+const clockEl = document.getElementById('clock');
+const dateEl = document.getElementById('date');
+const sbClockEl = document.getElementById('sb-clock');
+
+const DAYS = ['日','月','火','水','木','金','土'];
+function updateClock(){
+  const d = new Date();
+  const h = d.getHours();
+  const m = d.getMinutes().toString().padStart(2,'0');
+  const timeStr = `${h}:${m}`;
+  clockEl.textContent = timeStr;
+  sbClockEl.textContent = timeStr;
+  const month = d.getMonth()+1;
+  const day = d.getDate();
+  const wd = DAYS[d.getDay()];
+  dateEl.textContent = `${month}月${day}日（${wd}）`;
+}
+updateClock();
+setInterval(updateClock, 1000);
+
+// ========== 通知ロジック ==========
+const stack = document.getElementById('notif-stack');
+const MAX_VISIBLE = 4;
+let shown = [];
+let pool = [];
+let poolIdx = 0;
+
+function shuffle(arr){
+  const a=[...arr];
+  for(let i=a.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [a[i],a[j]]=[a[j],a[i]];
+  }
+  return a;
+}
+pool = shuffle(messages);
+
+function nowTime(){
+  const d=new Date();
+  return `${d.getHours()}:${d.getMinutes().toString().padStart(2,'0')}`;
+}
+
+function addNotif(){
+  if(poolIdx >= pool.length){
+    pool = shuffle(messages);
+    poolIdx = 0;
+  }
+  const m = pool[poolIdx++];
+
+  // 古いもの削除
+  if(shown.length >= MAX_VISIBLE){
+    const old = shown.shift();
+    old.classList.add('notif-exit');
+    setTimeout(()=>old.remove(), 380);
+  }
+
+  const card = document.createElement('div');
+  card.className = 'notif-card';
+
+  const iconBg = m.color;
+  const footerHTML = m.meta.read
+    ? `<div class="notif-footer"><span class="read-receipt">既読</span></div>`
+    : m.meta.dot
+    ? `<div class="notif-footer"><div class="unread-dot"></div></div>`
+    : m.meta.voice
+    ? `<div class="notif-footer"><span class="voice-msg">▶ 音声メッセージ 0:12</span></div>`
+    : '';
+
+  card.innerHTML = `
+    <div class="notif-header">
+      <div class="app-icon" style="background:${iconBg}">${m.icon}</div>
+      <span class="app-name">${m.app==='line'?'LINE':m.app==='ig'?'Instagram':m.app==='stripe'?'Stripe':m.app==='mail'?'メール':'カレンダー'}</span>
+      <span class="notif-time">${nowTime()}</span>
+    </div>
+    <div class="notif-sender">${m.from}</div>
+    <div class="notif-body">${m.body}</div>
+    ${footerHTML}
+  `;
+
+  stack.appendChild(card);
+  shown.push(card);
+}
+
+// 星パーティクル
+const canvas = document.getElementById('stars');
+const ctx = canvas.getContext('2d');
+let stars = [];
+function resize(){
+  canvas.width=innerWidth; canvas.height=innerHeight;
+  stars = Array.from({length:55},()=>({
+    x:Math.random()*canvas.width,
+    y:Math.random()*canvas.height,
+    r:Math.random()*1.0+0.2,
+    o:Math.random()*0.35+0.05,
+    speed:Math.random()*0.4+0.1,
+    phase:Math.random()*Math.PI*2
+  }));
+}
+resize();
+window.addEventListener('resize',resize);
+function drawStars(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const t=Date.now()/1000;
+  stars.forEach(s=>{
+    const op = s.o*(0.5+0.5*Math.sin(t*s.speed+s.phase));
+    ctx.beginPath();
+    ctx.arc(s.x,s.y,s.r,0,Math.PI*2);
+    ctx.fillStyle=`rgba(255,255,255,${op})`;
+    ctx.fill();
+  });
+  requestAnimationFrame(drawStars);
+}
+drawStars();
+
+// 起動時に2枚表示 → 自動追加
+addNotif();
+setTimeout(addNotif, 800);
+setTimeout(addNotif, 1600);
+
+function schedule(){
+  addNotif();
+  const next = 1800 + Math.random()*2000;
+  setTimeout(schedule, next);
+}
+setTimeout(schedule, 3000);
+</script>
+</body>
+</html>
